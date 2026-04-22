@@ -24,5 +24,8 @@ if ( file_exists( $puc_bootstrap ) ) {
 		'igs-papi-import'
 	);
 
-	$igs_updater->setBranch( 'main' );
+	$igs_updater->setBranch( 'master' );
+
+	// Store globally so the settings page can trigger a manual check.
+	$GLOBALS['igs_papi_updater'] = $igs_updater;
 }
