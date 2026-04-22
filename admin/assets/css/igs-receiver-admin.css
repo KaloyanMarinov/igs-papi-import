@@ -1,0 +1,36 @@
+.igs-receiver-wrap .igs-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 3px;
+	padding: 20px 24px;
+	max-width: 640px;
+	margin-top: 20px;
+}
+
+.igs-receiver-wrap .igs-key-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: 8px;
+}
+
+.igs-receiver-wrap .igs-key-row input[type="text"] {
+	flex: 1;
+	font-family: monospace;
+	font-size: 13px;
+}
+
+.igs-receiver-wrap .igs-feedback {
+	display: inline-block;
+	margin-left: 10px;
+	font-style: italic;
+	color: #646970;
+}
+
+.igs-receiver-wrap .igs-feedback.success {
+	color: #00a32a;
+}
+
+.igs-receiver-wrap .igs-feedback.error {
+	color: #d63638;
+}
