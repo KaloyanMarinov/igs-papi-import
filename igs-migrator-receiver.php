@@ -86,6 +86,7 @@ final class IGS_Migrator_Receiver {
 		require_once IGS_RECEIVER_DIR . 'includes/class-igs-taxonomy-sync.php';
 		require_once IGS_RECEIVER_DIR . 'includes/class-igs-rest-endpoint.php';
 		require_once IGS_RECEIVER_DIR . 'admin/class-igs-receiver-settings.php';
+		require_once IGS_RECEIVER_DIR . 'includes/igs-updater.php';
 	}
 
 	/**
