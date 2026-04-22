@@ -97,7 +97,7 @@ class IGS_Receiver_Settings {
 				'nonceKey'          => wp_create_nonce( 'igs_receiver_save_key' ),
 				'nonceAuthor'       => wp_create_nonce( 'igs_receiver_save_author' ),
 				'nonceReplacements' => wp_create_nonce( 'igs_receiver_save_replacements' ),
-				'i18n'        => array(
+					'i18n'        => array(
 					'saving'        => __( 'Saving…', 'igs-migrator' ),
 					'error'         => __( 'Error.', 'igs-migrator' ),
 					'requestFailed' => __( 'Request failed.', 'igs-migrator' ),
@@ -131,7 +131,7 @@ class IGS_Receiver_Settings {
 		<div class="wrap igs-receiver-wrap">
 			<h1><?php esc_html_e( 'IGS Papi Import — Settings', 'igs-migrator' ); ?></h1>
 
-			<div class="igs-card">
+		<div class="igs-card">
 				<h2><?php esc_html_e( 'API Key', 'igs-migrator' ); ?></h2>
 				<p>
 					<?php esc_html_e( 'Paste the API key that was generated for this site in the Source plugin\'s Settings → Sites panel.', 'igs-migrator' ); ?>
