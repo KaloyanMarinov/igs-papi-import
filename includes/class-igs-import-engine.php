@@ -155,8 +155,22 @@ class IGS_Import_Engine {
 			sanitize_text_field( $post_fields['post_title'] ?? '' )
 		);
 
+		// For casino child posts, derive the slug by stripping the parent title
+		// from the child title, so e.g. "Impressario Kazino Bonusları" → "bonuslari".
+		$post_name = '';
+		if ( 'casino' === sanitize_key( $post_fields['post_type'] ?? '' ) && $resolved_parent_id ) {
+			$parent_title = get_the_title( $resolved_parent_id );
+			if ( $parent_title ) {
+				$slug_base = trim( str_ireplace( $parent_title, '', $post_title ) );
+				if ( $slug_base ) {
+					$post_name = sanitize_title( $slug_base );
+				}
+			}
+		}
+
 		$post_data = array(
 			'post_title'     => $post_title,
+			'post_name'      => $post_name, // Empty = WP auto-generates from title.
 			'post_status'    => 'draft', // Always import as draft — admin publishes manually.
 			'post_type'      => sanitize_key( $post_fields['post_type']           ?? 'post' ),
 			'post_excerpt'   => sanitize_textarea_field( $post_fields['post_excerpt'] ?? '' ),
