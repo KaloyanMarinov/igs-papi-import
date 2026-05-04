@@ -3,7 +3,7 @@
  * Plugin Name: IGS Papi Import
  * Plugin URI:  https://igamingsolutions.com
  * Description: Receives and imports content migrated from the IGS Papi Export source site.
- * Version:     1.0.2
+ * Version:     1.0.3
  * Author:      IGS
  * License:     GPL-2.0+
  * Text Domain: igs-migrator
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Constants
-define( 'IGS_RECEIVER_VERSION',  '1.0.2' );
+define( 'IGS_RECEIVER_VERSION',  '1.0.3' );
 define( 'IGS_RECEIVER_DIR',      plugin_dir_path( __FILE__ ) );
 define( 'IGS_RECEIVER_URL',      plugin_dir_url( __FILE__ ) );
 define( 'IGS_RECEIVER_BASENAME', plugin_basename( __FILE__ ) );

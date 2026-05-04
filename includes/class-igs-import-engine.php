@@ -155,15 +155,27 @@ class IGS_Import_Engine {
 			sanitize_text_field( $post_fields['post_title'] ?? '' )
 		);
 
-		// For casino child posts, derive the slug by stripping the parent title
-		// from the child title, so e.g. "Impressario Kazino Bonusları" → "bonuslari".
+		// Determine post slug for casino posts.
 		$post_name = '';
-		if ( 'casino' === sanitize_key( $post_fields['post_type'] ?? '' ) && $resolved_parent_id ) {
-			$parent_title = get_the_title( $resolved_parent_id );
-			if ( $parent_title ) {
-				$slug_base = trim( str_ireplace( $parent_title, '', $post_title ) );
-				if ( $slug_base ) {
-					$post_name = sanitize_title( $slug_base );
+		if ( 'casino' === sanitize_key( $post_fields['post_type'] ?? '' ) ) {
+			if ( ! $resolved_parent_id ) {
+				// Main casino post — use igs_casino_slug from the casino-menu taxonomy term if set.
+				$post_name = $this->get_casino_slug_from_taxonomy( $payload['post_taxonomies'] ?? array() );
+			} else {
+				// Child casino post — use igs_casino_slug directly if set,
+				// otherwise strip the parent title from the child title.
+				$casino_slug_part = $this->get_casino_slug_from_taxonomy( $payload['post_taxonomies'] ?? array() );
+
+				if ( $casino_slug_part ) {
+					$post_name = $casino_slug_part;
+				} else {
+					$parent_title = get_the_title( $resolved_parent_id );
+					if ( $parent_title ) {
+						$slug_base = trim( str_ireplace( $parent_title, '', $post_title ) );
+						if ( $slug_base ) {
+							$post_name = sanitize_title( $slug_base );
+						}
+					}
 				}
 			}
 		}
@@ -542,6 +554,33 @@ class IGS_Import_Engine {
 		}
 
 		return $title;
+	}
+
+	/**
+	 * Find the igs_casino_slug ACF field value from the casino-menu taxonomy term
+	 * listed in the payload's post_taxonomies.
+	 *
+	 * @param  array $post_taxonomies  Raw post_taxonomies from the payload.
+	 * @return string  Sanitized slug, or empty string if not found / not set.
+	 */
+	private function get_casino_slug_from_taxonomy( array $post_taxonomies ) {
+		foreach ( $post_taxonomies as $descriptor ) {
+			if ( empty( $descriptor['taxonomy'] ) || 'casino-menu' !== $descriptor['taxonomy'] ) {
+				continue;
+			}
+
+			$term_id = $this->find_term_by_slug( $descriptor );
+			if ( ! $term_id ) {
+				continue;
+			}
+
+			$slug = get_field( 'igs_casino_slug', 'term_' . $term_id );
+			if ( $slug ) {
+				return sanitize_title( $slug );
+			}
+		}
+
+		return '';
 	}
 
 	// ── PRIVATE — DESCRIPTOR TYPE CHECKS ─────────────────────────────────────
