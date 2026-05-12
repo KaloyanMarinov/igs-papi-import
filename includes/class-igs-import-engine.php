@@ -239,6 +239,11 @@ class IGS_Import_Engine {
 			$this->import_post_taxonomies( $local_id, $payload['post_taxonomies'] );
 		}
 
+		// ── Pretty Links ─────────────────────────────────────────────────────
+		if ( ! empty( $payload['pretty_link'] ) && is_array( $payload['pretty_link'] ) ) {
+			( new IGS_Pretty_Link_Importer() )->import( $payload['pretty_link'] );
+		}
+
 		// ── Relation queue ────────────────────────────────────────────────────
 		$resolver = new IGS_Relation_Resolver();
 
