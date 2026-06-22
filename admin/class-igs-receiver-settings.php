@@ -36,7 +36,8 @@ class IGS_Receiver_Settings {
 	private function __construct() {
 		add_action( 'admin_menu',    array( $this, 'add_menu' ) );
 		add_action( 'admin_notices', array( $this, 'maybe_show_notice' ) );
-		add_action( 'wp_ajax_igs_receiver_save_key',          array( $this, 'ajax_save_key' ) );
+		add_action( 'wp_ajax_igs_receiver_add_site',          array( $this, 'ajax_add_site' ) );
+		add_action( 'wp_ajax_igs_receiver_remove_site',       array( $this, 'ajax_remove_site' ) );
 		add_action( 'wp_ajax_igs_receiver_save_author',       array( $this, 'ajax_save_author' ) );
 		add_action( 'wp_ajax_igs_receiver_save_replacements', array( $this, 'ajax_save_replacements' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
@@ -94,13 +95,15 @@ class IGS_Receiver_Settings {
 			'igs-receiver-admin',
 			'igsReceiver',
 			array(
-				'nonceKey'          => wp_create_nonce( 'igs_receiver_save_key' ),
+				'nonceAddSite'      => wp_create_nonce( 'igs_receiver_add_site' ),
+				'nonceRemoveSite'   => wp_create_nonce( 'igs_receiver_remove_site' ),
 				'nonceAuthor'       => wp_create_nonce( 'igs_receiver_save_author' ),
 				'nonceReplacements' => wp_create_nonce( 'igs_receiver_save_replacements' ),
 					'i18n'        => array(
 					'saving'        => __( 'Saving…', 'igs-migrator' ),
 					'error'         => __( 'Error.', 'igs-migrator' ),
 					'requestFailed' => __( 'Request failed.', 'igs-migrator' ),
+					'confirmRemove' => __( 'Remove this connected site?', 'igs-migrator' ),
 				),
 			)
 		);
@@ -116,8 +119,7 @@ class IGS_Receiver_Settings {
 			wp_die( esc_html__( 'Unauthorized.', 'igs-migrator' ) );
 		}
 
-		$current_key    = get_option( 'igs_receiver_api_key', '' );
-		$masked_key     = $current_key ? str_repeat( '●', 32 ) : '';
+		$sites          = IGS_Auth_Handler::get_sites();
 		$current_author = (int) get_option( 'igs_receiver_default_author', 0 );
 
 		// List users eligible to be set as post author.
@@ -132,51 +134,64 @@ class IGS_Receiver_Settings {
 			<h1><?php esc_html_e( 'IGS Papi Import — Settings', 'igs-migrator' ); ?></h1>
 
 		<div class="igs-card">
-				<h2><?php esc_html_e( 'API Key', 'igs-migrator' ); ?></h2>
+				<h2><?php esc_html_e( 'Connected Sites', 'igs-migrator' ); ?></h2>
 				<p>
-					<?php esc_html_e( 'Paste the API key that was generated for this site in the Source plugin\'s Settings → Sites panel.', 'igs-migrator' ); ?>
+					<?php esc_html_e( 'Add one entry per Source site. Paste the API key that was generated for this receiver in each Source plugin\'s Settings → Sites panel. Any site with a matching key may import.', 'igs-migrator' ); ?>
 				</p>
 
-				<table class="form-table">
-					<tr>
-						<th>
-							<label for="igs-api-key-input">
-								<?php esc_html_e( 'API Key', 'igs-migrator' ); ?>
-							</label>
-						</th>
-						<td>
-							<div class="igs-key-row">
-								<input
-									type="text"
-									id="igs-api-key-input"
-									class="regular-text"
-									placeholder="<?php esc_attr_e( 'Paste API key here…', 'igs-migrator' ); ?>"
-									value=""
-									autocomplete="off"
-								/>
-								<button type="button" id="igs-save-key-btn" class="button button-primary">
-									<?php esc_html_e( 'Save', 'igs-migrator' ); ?>
-								</button>
-								<span id="igs-key-feedback" class="igs-feedback"></span>
-							</div>
-							<?php if ( $current_key ) : ?>
-							<p class="description">
-								<?php
-								printf(
-									/* translators: masked API key */
-									esc_html__( 'Current key: %s', 'igs-migrator' ),
-									'<code>' . esc_html( $masked_key ) . '</code>'
-								);
-								?>
-							</p>
-							<?php else : ?>
-							<p class="description" style="color:#d63638;">
-								<?php esc_html_e( 'No API key configured. The receiver will reject all incoming requests.', 'igs-migrator' ); ?>
-							</p>
-							<?php endif; ?>
-						</td>
-					</tr>
+				<table class="widefat striped" style="max-width:720px;margin-bottom:16px;">
+					<thead>
+						<tr>
+							<th style="width:30%;"><?php esc_html_e( 'Name', 'igs-migrator' ); ?></th>
+							<th><?php esc_html_e( 'API Key', 'igs-migrator' ); ?></th>
+							<th style="width:90px;"></th>
+						</tr>
+					</thead>
+					<tbody id="igs-sites-tbody">
+						<?php if ( empty( $sites ) ) : ?>
+						<tr class="igs-no-sites">
+							<td colspan="3" style="color:#d63638;">
+								<?php esc_html_e( 'No connected sites. The receiver will reject all incoming requests.', 'igs-migrator' ); ?>
+							</td>
+						</tr>
+						<?php else : ?>
+							<?php foreach ( $sites as $site ) : ?>
+							<tr data-id="<?php echo esc_attr( $site['id'] ); ?>">
+								<td><strong><?php echo esc_html( $site['label'] ); ?></strong></td>
+								<td><code><?php echo esc_html( str_repeat( '●', 32 ) ); ?></code></td>
+								<td>
+									<button type="button" class="button igs-remove-site-btn">
+										<?php esc_html_e( 'Remove', 'igs-migrator' ); ?>
+									</button>
+								</td>
+							</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
 				</table>
+
+				<h3 style="margin-top:8px;"><?php esc_html_e( 'Add a site', 'igs-migrator' ); ?></h3>
+				<div class="igs-key-row" style="flex-wrap:wrap;gap:8px;">
+					<input
+						type="text"
+						id="igs-site-label-input"
+						class="regular-text"
+						placeholder="<?php esc_attr_e( 'Site name (e.g. Casino DE)', 'igs-migrator' ); ?>"
+						style="max-width:220px;"
+						autocomplete="off"
+					/>
+					<input
+						type="text"
+						id="igs-site-key-input"
+						class="regular-text"
+						placeholder="<?php esc_attr_e( 'Paste API key here…', 'igs-migrator' ); ?>"
+						autocomplete="off"
+					/>
+					<button type="button" id="igs-add-site-btn" class="button button-primary">
+						<?php esc_html_e( 'Add', 'igs-migrator' ); ?>
+					</button>
+					<span id="igs-site-feedback" class="igs-feedback"></span>
+				</div>
 
 				<h3 style="margin-top:24px;"><?php esc_html_e( 'REST Endpoint', 'igs-migrator' ); ?></h3>
 				<p><?php esc_html_e( 'The Source site pushes content to these endpoints:', 'igs-migrator' ); ?></p>
@@ -192,7 +207,7 @@ class IGS_Receiver_Settings {
 						</tr>
 					</tbody>
 				</table>
-			</div><!-- /.igs-card API Key -->
+			</div><!-- /.igs-card Connected Sites -->
 
 			<div class="igs-card">
 				<h2><?php esc_html_e( 'Default Post Author', 'igs-migrator' ); ?></h2>
@@ -289,21 +304,22 @@ class IGS_Receiver_Settings {
 		<?php
 	}
 
-	// ── AJAX — SAVE KEY ───────────────────────────────────────────────────────
+	// ── AJAX — ADD SITE ───────────────────────────────────────────────────────
 
 	/**
-	 * AJAX handler: save the API key.
+	 * AJAX handler: add a connected site (label + API key).
 	 *
-	 * Accepts POST params: nonce, api_key.
+	 * Accepts POST params: nonce, label, api_key.
 	 */
-	public function ajax_save_key() {
-		check_ajax_referer( 'igs_receiver_save_key', 'nonce' );
+	public function ajax_add_site() {
+		check_ajax_referer( 'igs_receiver_add_site', 'nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'igs-migrator' ) ) );
 		}
 
-		$api_key = sanitize_text_field( $_POST['api_key'] ?? '' );
+		$label   = sanitize_text_field( wp_unslash( $_POST['label']   ?? '' ) );
+		$api_key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
 
 		if ( empty( $api_key ) ) {
 			wp_send_json_error( array( 'message' => __( 'API key cannot be empty.', 'igs-migrator' ) ) );
@@ -314,9 +330,73 @@ class IGS_Receiver_Settings {
 			wp_send_json_error( array( 'message' => __( 'API key looks too short. Please check the value and try again.', 'igs-migrator' ) ) );
 		}
 
-		update_option( 'igs_receiver_api_key', $api_key );
+		$sites = IGS_Auth_Handler::get_sites();
 
-		wp_send_json_success( array( 'message' => __( 'API key saved.', 'igs-migrator' ) ) );
+		// Reject duplicate keys.
+		foreach ( $sites as $site ) {
+			if ( hash_equals( (string) $site['key'], $api_key ) ) {
+				wp_send_json_error( array( 'message' => __( 'This API key is already connected.', 'igs-migrator' ) ) );
+			}
+		}
+
+		if ( empty( $label ) ) {
+			/* translators: %d running site number */
+			$label = sprintf( __( 'Site %d', 'igs-migrator' ), count( $sites ) + 1 );
+		}
+
+		$new_site = array(
+			'id'    => IGS_Auth_Handler::generate_id(),
+			'label' => $label,
+			'key'   => $api_key,
+		);
+
+		$sites[] = $new_site;
+		IGS_Auth_Handler::save_sites( $sites );
+
+		wp_send_json_success( array(
+			'message' => __( 'Site added.', 'igs-migrator' ),
+			'site'    => array(
+				'id'    => $new_site['id'],
+				'label' => $new_site['label'],
+			),
+		) );
+	}
+
+	// ── AJAX — REMOVE SITE ────────────────────────────────────────────────────
+
+	/**
+	 * AJAX handler: remove a connected site by id.
+	 *
+	 * Accepts POST params: nonce, id.
+	 */
+	public function ajax_remove_site() {
+		check_ajax_referer( 'igs_receiver_remove_site', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'igs-migrator' ) ) );
+		}
+
+		$id = sanitize_text_field( wp_unslash( $_POST['id'] ?? '' ) );
+
+		if ( empty( $id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Missing site id.', 'igs-migrator' ) ) );
+		}
+
+		$sites    = IGS_Auth_Handler::get_sites();
+		$filtered = array_filter(
+			$sites,
+			function ( $site ) use ( $id ) {
+				return ! isset( $site['id'] ) || $site['id'] !== $id;
+			}
+		);
+
+		if ( count( $filtered ) === count( $sites ) ) {
+			wp_send_json_error( array( 'message' => __( 'Site not found.', 'igs-migrator' ) ) );
+		}
+
+		IGS_Auth_Handler::save_sites( $filtered );
+
+		wp_send_json_success( array( 'message' => __( 'Site removed.', 'igs-migrator' ) ) );
 	}
 
 	// ── AJAX — SAVE AUTHOR ────────────────────────────────────────────────────
@@ -397,7 +477,7 @@ class IGS_Receiver_Settings {
 			return;
 		}
 
-		if ( ! empty( get_option( 'igs_receiver_api_key', '' ) ) ) {
+		if ( ! empty( IGS_Auth_Handler::get_sites() ) ) {
 			return;
 		}
 
@@ -408,7 +488,7 @@ class IGS_Receiver_Settings {
 				<?php
 				printf(
 					/* translators: %s settings page link */
-					esc_html__( 'IGS Papi Import: API key not configured. %s', 'igs-migrator' ),
+					esc_html__( 'IGS Papi Import: no connected sites configured. %s', 'igs-migrator' ),
 					'<a href="' . esc_url( $settings_url ) . '">'
 					. esc_html__( 'Configure now', 'igs-migrator' ) . '</a>'
 				);

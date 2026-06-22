@@ -21,8 +21,11 @@ $wpdb->query( "DROP TABLE IF EXISTS `{$wpdb->prefix}igs_receiver_relations`" ); 
 
 $options = array(
 	'igs_receiver_api_key',
+	'igs_receiver_api_keys',
 	'igs_receiver_db_version',
 	'igs_receiver_default_author',
+	'igs_receiver_title_words',
+	'igs_receiver_title_translations',
 );
 
 foreach ( $options as $option ) {

@@ -29,18 +29,81 @@ function igsSend(data, feedbackEl) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
-	// ── API Key ───────────────────────────────────────────────────────────────
-	var keyBtn = document.getElementById('igs-save-key-btn');
-	var keyInput = document.getElementById('igs-api-key-input');
-	var keyFeedback = document.getElementById('igs-key-feedback');
+	// ── Connected Sites ─────────────────────────────────────────────────────────
+	var addSiteBtn = document.getElementById('igs-add-site-btn');
+	var siteLabelInput = document.getElementById('igs-site-label-input');
+	var siteKeyInput = document.getElementById('igs-site-key-input');
+	var siteFeedback = document.getElementById('igs-site-feedback');
+	var sitesTbody = document.getElementById('igs-sites-tbody');
 
-	if (keyBtn) {
-		keyBtn.addEventListener('click', function () {
+	if (addSiteBtn) {
+		addSiteBtn.addEventListener('click', function () {
 			var data = new FormData();
-			data.append('action', 'igs_receiver_save_key');
-			data.append('nonce', igsReceiver.nonceKey);
-			data.append('api_key', keyInput.value.trim());
-			igsSend(data, keyFeedback);
+			data.append('action', 'igs_receiver_add_site');
+			data.append('nonce', igsReceiver.nonceAddSite);
+			data.append('label', siteLabelInput.value.trim());
+			data.append('api_key', siteKeyInput.value.trim());
+
+			siteFeedback.textContent = igsReceiver.i18n.saving;
+			siteFeedback.className = 'igs-feedback';
+
+			fetch(ajaxurl, { method: 'POST', body: data })
+				.then(function (r) { return r.json(); })
+				.then(function (res) {
+					if (res.success) {
+						// Re-render to show the new row with a masked key.
+						window.location.reload();
+					} else {
+						siteFeedback.textContent = (res.data && res.data.message) ? res.data.message : igsReceiver.i18n.error;
+						siteFeedback.className = 'igs-feedback error';
+					}
+				})
+				.catch(function () {
+					siteFeedback.textContent = igsReceiver.i18n.requestFailed;
+					siteFeedback.className = 'igs-feedback error';
+				});
+		});
+	}
+
+	// Remove buttons — event delegation on the table body.
+	if (sitesTbody) {
+		sitesTbody.addEventListener('click', function (e) {
+			var btn = e.target.closest('.igs-remove-site-btn');
+			if (!btn) {
+				return;
+			}
+
+			var row = btn.closest('tr');
+			var id = row ? row.getAttribute('data-id') : '';
+			if (!id) {
+				return;
+			}
+
+			if (!window.confirm(igsReceiver.i18n.confirmRemove)) {
+				return;
+			}
+
+			var data = new FormData();
+			data.append('action', 'igs_receiver_remove_site');
+			data.append('nonce', igsReceiver.nonceRemoveSite);
+			data.append('id', id);
+
+			btn.disabled = true;
+
+			fetch(ajaxurl, { method: 'POST', body: data })
+				.then(function (r) { return r.json(); })
+				.then(function (res) {
+					if (res.success) {
+						row.parentNode.removeChild(row);
+					} else {
+						btn.disabled = false;
+						window.alert((res.data && res.data.message) ? res.data.message : igsReceiver.i18n.error);
+					}
+				})
+				.catch(function () {
+					btn.disabled = false;
+					window.alert(igsReceiver.i18n.requestFailed);
+				});
 		});
 	}
 

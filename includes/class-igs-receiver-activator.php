@@ -62,11 +62,15 @@ class IGS_Receiver_Activator {
 
 	/**
 	 * Save default options if they do not exist yet.
+	 *
+	 * Connected sites are stored in 'igs_receiver_api_keys' as a list of
+	 * [ id, label, key ] entries. The list is initialized lazily by
+	 * IGS_Auth_Handler::get_sites(), which also migrates the legacy
+	 * single-key option, so nothing needs to be forced here.
 	 */
 	private static function set_default_options() {
-		// API key entered by the admin — copied from the Source site's site registry.
-		if ( ! get_option( 'igs_receiver_api_key' ) ) {
-			update_option( 'igs_receiver_api_key', '' );
-		}
+		// Triggers initialization of the connected-sites list and migration of
+		// any legacy single-key option into it.
+		IGS_Auth_Handler::get_sites();
 	}
 }
