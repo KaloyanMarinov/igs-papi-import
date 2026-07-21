@@ -30,7 +30,7 @@ class IGS_Pretty_Link_Importer {
 	 * @param  array $pretty_link  [ 'link' => [...], 'meta' => [...], 'rotations' => [...] ]
 	 */
 	public function import( array $pretty_link ) {
-		global $wpdb, $prli_link, $prli_link_meta;
+		global $wpdb;
 
 		$link_data = $pretty_link['link']      ?? array();
 		$meta_data = $pretty_link['meta']      ?? array();
@@ -69,57 +69,193 @@ class IGS_Pretty_Link_Importer {
 			}
 		}
 
-		// ── Build values for PrliLink::create() ───────────────────────────────
-		// PrliLink::sanitize() treats boolean fields as "present = 1, absent = 0",
-		// so we only include them when their exported value is truthy.
-		$values = array(
-			'slug'          => $slug,
-			'url'           => esc_url_raw( $url ),
-			'name'          => sanitize_text_field( $link_data['name']        ?? '' ),
-			'description'   => sanitize_textarea_field( $link_data['description'] ?? '' ),
-			'redirect_type' => sanitize_key( $link_data['redirect_type']      ?? '307' ),
-			'link_cpt_id'   => 0, // create() auto-creates the CPT post.
+		// ── Build normalized field values ─────────────────────────────────────
+		$fields = array(
+			'slug'             => $slug,
+			'url'              => esc_url_raw( $url ),
+			'name'             => sanitize_text_field( $link_data['name']        ?? '' ),
+			'description'      => sanitize_textarea_field( $link_data['description'] ?? '' ),
+			'redirect_type'    => sanitize_key( $link_data['redirect_type']      ?? '307' ),
+			'nofollow'         => $this->truthy( $link_data['nofollow']         ?? 0 ),
+			'sponsored'        => $this->truthy( $link_data['sponsored']        ?? 0 ),
+			'param_forwarding' => $this->truthy( $link_data['param_forwarding'] ?? 0 ),
+			'track_me'         => $this->truthy( $link_data['track_me']         ?? 0 ),
 		);
 
-		foreach ( array( 'nofollow', 'sponsored', 'param_forwarding', 'track_me' ) as $bool_field ) {
-			if ( ! empty( $link_data[ $bool_field ] ) ) {
-				$values[ $bool_field ] = 1;
-			}
-		}
-
 		// ── Create the link ───────────────────────────────────────────────────
-		if ( isset( $prli_link ) && is_object( $prli_link ) ) {
-			$link_id = $prli_link->create( $values );
-		} else {
-			$link_id = $this->insert_link_direct( $values );
-		}
+		$link_id = $this->create_link( $fields );
 
 		if ( ! $link_id ) {
 			return;
 		}
 
 		// ── Save meta ─────────────────────────────────────────────────────────
-		if ( ! isset( $prli_link_meta ) || ! is_object( $prli_link_meta ) ) {
-			return;
-		}
-
-		foreach ( $meta_data as $key => $value ) {
-			if ( 'geo' === $dynamic_redirection && in_array( $key, self::GEO_META_KEYS, true ) ) {
-				continue;
-			}
-
-			if ( 'prli_dynamic_redirection' === $key && 'geo' === $dynamic_redirection ) {
-				$prli_link_meta->update_link_meta( $link_id, $key, 'none' );
-				continue;
-			}
-
-			$prli_link_meta->update_link_meta( $link_id, $key, $value );
-		}
+		$this->save_link_meta( $link_id, $meta_data, $dynamic_redirection );
 
 		// ── Save rotations (only for non-geo) ─────────────────────────────────
 		if ( 'geo' !== $dynamic_redirection && ! empty( $rotations ) ) {
 			$this->insert_rotations( $link_id, $rotations );
 		}
+	}
+
+	/**
+	 * Create a Pretty Links record using the most appropriate available API.
+	 *
+	 * Strategy, in order of preference:
+	 *   1. Pretty Links v4 repository (\PrettyLinks\Repositories\Links) — clean,
+	 *      no deprecation notices, creates the backing CPT post too.
+	 *   2. prli_create_pretty_link() — the documented public function present in
+	 *      both v3 and v4 (a deprecation-logging shim in v4).
+	 *   3. Legacy v3 global object $prli_link->create().
+	 *   4. Direct DB insert into prli_links as a last resort.
+	 *
+	 * @param  array $fields  Normalized link fields (booleans as 1/0).
+	 * @return int  New link ID, or 0 on failure.
+	 */
+	private function create_link( array $fields ) {
+		// ── 1. v4 repository ──────────────────────────────────────────────────
+		if ( class_exists( '\\PrettyLinks\\Repositories\\Links' ) ) {
+			try {
+				$repo   = new \PrettyLinks\Repositories\Links();
+				$result = $repo->create( array(
+					'url'              => $fields['url'],
+					'slug'             => $fields['slug'],
+					'name'             => $fields['name'],
+					'description'      => $fields['description'],
+					'redirect_type'    => $fields['redirect_type'],
+					'track_me'         => $fields['track_me'],
+					'nofollow'         => $fields['nofollow'],
+					'sponsored'        => $fields['sponsored'],
+					'param_forwarding' => $fields['param_forwarding'] ? 'on' : 'off',
+				) );
+
+				if ( is_array( $result ) && empty( $result['error'] ) && ! empty( $result['id'] ) ) {
+					return (int) $result['id'];
+				}
+			} catch ( \Throwable $e ) {
+				// Fall through to the next strategy.
+				error_log( '[IGS Papi Import] PrettyLinks repo create() failed: ' . $e->getMessage() );
+			}
+		}
+
+		// ── 2. Public function (v3 + v4) ──────────────────────────────────────
+		// Pass explicit 1/0 (not '') so the source's on/off state is preserved
+		// instead of falling back to the destination site's defaults.
+		if ( function_exists( 'prli_create_pretty_link' ) ) {
+			$link_id = prli_create_pretty_link(
+				$fields['url'],
+				$fields['slug'],
+				$fields['name'],
+				$fields['description'],
+				0,
+				$fields['track_me'],
+				$fields['nofollow'],
+				$fields['sponsored'],
+				$fields['redirect_type'],
+				$fields['param_forwarding']
+			);
+
+			if ( $link_id ) {
+				return (int) $link_id;
+			}
+		}
+
+		// ── 3. Legacy v3 object ───────────────────────────────────────────────
+		global $prli_link;
+		if ( isset( $prli_link ) && is_object( $prli_link ) && method_exists( $prli_link, 'create' ) ) {
+			$values = array(
+				'slug'          => $fields['slug'],
+				'url'           => $fields['url'],
+				'name'          => $fields['name'],
+				'description'   => $fields['description'],
+				'redirect_type' => $fields['redirect_type'],
+				'link_cpt_id'   => 0,
+			);
+			foreach ( array( 'nofollow', 'sponsored', 'param_forwarding', 'track_me' ) as $bool_field ) {
+				if ( $fields[ $bool_field ] ) {
+					$values[ $bool_field ] = 1;
+				}
+			}
+
+			$link_id = $prli_link->create( $values );
+			if ( $link_id ) {
+				return (int) $link_id;
+			}
+		}
+
+		// ── 4. Direct DB insert ───────────────────────────────────────────────
+		return (int) $this->insert_link_direct( $fields );
+	}
+
+	/**
+	 * Save link meta directly into prli_link_metas, mirroring the format the
+	 * export collector reads (grouped rows per meta_key, ordered by meta_order).
+	 *
+	 * Writing directly avoids any dependency on Pretty Links internals, which
+	 * changed substantially between v3 and v4.
+	 *
+	 * @param  int    $link_id
+	 * @param  array  $meta_data            [ meta_key => value|value[] ]
+	 * @param  string $dynamic_redirection  Effective redirection mode.
+	 */
+	private function save_link_meta( $link_id, array $meta_data, $dynamic_redirection ) {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'prli_link_metas';
+
+		if ( empty( $meta_data ) || ! $this->table_exists( $table ) ) {
+			return;
+		}
+
+		foreach ( $meta_data as $key => $value ) {
+			// In geo mode: do not persist geo_url / geo_countries, and force the
+			// redirection mode to "none" (the resolved URL is now the basic URL).
+			if ( 'geo' === $dynamic_redirection && in_array( $key, self::GEO_META_KEYS, true ) ) {
+				continue;
+			}
+
+			if ( 'prli_dynamic_redirection' === $key && 'geo' === $dynamic_redirection ) {
+				$value = 'none';
+			}
+
+			// Replace any rows the create() call may have seeded for this key.
+			$wpdb->delete( $table, array( 'link_id' => $link_id, 'meta_key' => $key ) );
+
+			// Pretty Links v4 dropped the meta_order column; row order is
+			// preserved by the auto-increment id (insert order below).
+			$values = is_array( $value ) ? array_values( $value ) : array( $value );
+
+			foreach ( $values as $single ) {
+				$wpdb->insert(
+					$table,
+					array(
+						'link_id'    => $link_id,
+						'meta_key'   => $key,
+						'meta_value' => is_scalar( $single ) ? (string) $single : maybe_serialize( $single ),
+					)
+				);
+			}
+		}
+	}
+
+	/**
+	 * Normalize a loosely-typed exported flag to 1 or 0.
+	 *
+	 * Handles v3 integers (1/0), v4 strings ('on'/'off'), and booleans.
+	 *
+	 * @param  mixed $value
+	 * @return int  1 or 0.
+	 */
+	private function truthy( $value ) {
+		if ( is_string( $value ) ) {
+			$value = strtolower( trim( $value ) );
+			if ( in_array( $value, array( '', '0', 'off', 'no', 'false' ), true ) ) {
+				return 0;
+			}
+			return 1;
+		}
+
+		return $value ? 1 : 0;
 	}
 
 	// ── PRIVATE ───────────────────────────────────────────────────────────────
@@ -190,9 +326,10 @@ class IGS_Pretty_Link_Importer {
 	}
 
 	/**
-	 * Fallback direct insert when $prli_link global is unavailable.
+	 * Last-resort direct insert into prli_links when no Pretty Links API is
+	 * available (create_link() strategies 1–3 all failed).
 	 *
-	 * @param  array $values
+	 * @param  array $values  Normalized link fields (valid prli_links columns).
 	 * @return int|false  Inserted link ID, or false on failure.
 	 */
 	private function insert_link_direct( array $values ) {

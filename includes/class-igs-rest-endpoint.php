@@ -99,6 +99,30 @@ class IGS_Rest_Endpoint {
 		);
 	}
 
+	// ── LOGGING HELPERS ───────────────────────────────────────────────────────
+
+	/**
+	 * Whether to expose detailed error data (file, line, trace) in responses.
+	 *
+	 * @return bool
+	 */
+	private static function debug_enabled() {
+		return defined( 'WP_DEBUG' ) && WP_DEBUG;
+	}
+
+	/**
+	 * Write a message to the PHP / WordPress error log, prefixed for grep-ing.
+	 *
+	 * Enable logging on the receiver site with, in wp-config.php:
+	 *   define( 'WP_DEBUG', true );
+	 *   define( 'WP_DEBUG_LOG', true );   // writes to wp-content/debug.log
+	 *
+	 * @param string $message
+	 */
+	private static function log( $message ) {
+		error_log( '[IGS Papi Import] ' . $message );
+	}
+
 	// ── PERMISSION CALLBACK ───────────────────────────────────────────────────
 
 	/**
@@ -171,14 +195,58 @@ class IGS_Rest_Endpoint {
 			set_time_limit( 300 );
 		}
 
-		$result = $this->engine->import( $payload );
+		// Wrap the import so PHP exceptions/errors (e.g. during image download,
+		// taxonomy or block processing) surface as a readable message instead of
+		// an opaque HTTP 500 with no body.
+		try {
+			$result = $this->engine->import( $payload );
+		} catch ( \Throwable $e ) {
+			$source = isset( $payload['source_site'] ) ? $payload['source_site'] : 'unknown';
+			$post   = isset( $payload['source_post_id'] ) ? $payload['source_post_id'] : 'unknown';
+
+			self::log( sprintf(
+				'Import EXCEPTION for %s#%s: %s in %s:%d',
+				$source,
+				$post,
+				$e->getMessage(),
+				$e->getFile(),
+				$e->getLine()
+			) );
+			self::log( $e->getTraceAsString() );
+
+			return new WP_REST_Response(
+				array(
+					'success' => false,
+					'message' => $e->getMessage(),
+					'code'    => 'igs_import_exception',
+					'detail'  => self::debug_enabled() ? array(
+						'file'  => $e->getFile(),
+						'line'  => $e->getLine(),
+						'trace' => explode( "\n", $e->getTraceAsString() ),
+					) : null,
+				),
+				500
+			);
+		}
 
 		if ( is_wp_error( $result ) ) {
+			$source = isset( $payload['source_site'] ) ? $payload['source_site'] : 'unknown';
+			$post   = isset( $payload['source_post_id'] ) ? $payload['source_post_id'] : 'unknown';
+
+			self::log( sprintf(
+				'Import ERROR for %s#%s: [%s] %s',
+				$source,
+				$post,
+				$result->get_error_code(),
+				$result->get_error_message()
+			) );
+
 			return new WP_REST_Response(
 				array(
 					'success' => false,
 					'message' => $result->get_error_message(),
 					'code'    => $result->get_error_code(),
+					'detail'  => self::debug_enabled() ? $result->get_error_data() : null,
 				),
 				500
 			);

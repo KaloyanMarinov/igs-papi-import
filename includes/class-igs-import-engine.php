@@ -240,8 +240,20 @@ class IGS_Import_Engine {
 		}
 
 		// ── Pretty Links ─────────────────────────────────────────────────────
+		// Best-effort: a Pretty Links problem must never fail the whole post
+		// import (the post is already saved at this point).
 		if ( ! empty( $payload['pretty_link'] ) && is_array( $payload['pretty_link'] ) ) {
-			( new IGS_Pretty_Link_Importer() )->import( $payload['pretty_link'] );
+			try {
+				( new IGS_Pretty_Link_Importer() )->import( $payload['pretty_link'] );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf(
+					'[IGS Papi Import] Pretty Link import failed for post %d: %s in %s:%d',
+					$local_id,
+					$e->getMessage(),
+					$e->getFile(),
+					$e->getLine()
+				) );
+			}
 		}
 
 		// ── Relation queue ────────────────────────────────────────────────────
