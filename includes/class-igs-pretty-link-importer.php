@@ -232,6 +232,11 @@ class IGS_Pretty_Link_Importer {
 						'link_id'    => $link_id,
 						'meta_key'   => $key,
 						'meta_value' => is_scalar( $single ) ? (string) $single : maybe_serialize( $single ),
+						// prli_link_metas.created_at is NOT NULL with no default —
+						// omitting it makes the INSERT fail under MySQL strict mode,
+						// silently dropping all imported meta. Pretty Links v4 writes
+						// this column itself (LinkMetas::set) for the same reason.
+						'created_at' => current_time( 'mysql', true ),
 					)
 				);
 			}
